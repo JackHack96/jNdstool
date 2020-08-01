@@ -31,41 +31,6 @@ import java.util.*;
  * This is the main class, which handles the entire ROM
  */
 public class ROM {
-
-    /**
-     * Load an existing folder containing ROM's files
-     *
-     * @param path The path where the ROM files are stored
-     * @throws IOException If something goes wrong
-     */
-    public ROM(Path path) throws IOException {
-        // General check of the files
-        if (Files.notExists(path.resolve("data")))
-            throw new IOException("data subfolder not found! Please check the given directory!");
-        if (Files.notExists(path.resolve("overlay")))
-            throw new IOException("overlay subfolder not found! Please check the given directory!");
-        if (Files.notExists(path.resolve("arm9")))
-            throw new IOException("arm9 file not found! Please check the given directory!");
-        if (Files.notExists(path.resolve("arm9ovltable")))
-            throw new IOException("arm9 overlay table file not found! Please check the given directory!");
-        if (Files.notExists(path.resolve("arm7")))
-            throw new IOException("arm7 file not found! Please check the given directory!");
-        if (Files.notExists(path.resolve("arm7ovltable")))
-            throw new IOException("arm7 overlay table not found! Please check the given directory!");
-        if (Files.notExists(path.resolve("header")))
-            throw new IOException("header file not found! Please check the given directory!");
-        if (Files.notExists(path.resolve("banner")))
-            throw new IOException("banner file not found! Please check the given directory!");
-
-        // Now we load the header
-        //BinaryReader reader = new BinaryReader(path.resolve("header"));
-
-        // The ROM's header, which contains all the informations for the other things
-        //NitroHeader header = NitroHeader.readHeader(reader);
-
-        //reader.close();
-    }
-
     /**
      * Extract the entire ROM in the host file system
      *
@@ -97,12 +62,12 @@ public class ROM {
         NitroDirectory.loadDir(root, rom, rom.getPosition(), startOffset, endOffset);
 
         // Let's create the directory tree
-        if (Files.notExists(dirPath.resolve("data")))
-            Files.createDirectory(dirPath.resolve("data"));
-        NitroDirectory.createDirectoryTree(dirPath.resolve("data"), root);
+        if (Files.notExists(dirPath.resolve("root")))
+            Files.createDirectory(dirPath.resolve("root"));
+        NitroDirectory.unpackFileTree(rom, dirPath.resolve("root"), root);
 
         // And now we fill everything with files
-        NitroDirectory.createFileTree(rom, dirPath.resolve("data"), root);
+        //NitroDirectory.createFileTree(rom, dirPath.resolve("data"), root);
 
         // We also have to extract the header, the ARM binary files and the overlays
         BinaryWriter w; // The writer for the various files
@@ -183,7 +148,7 @@ public class ROM {
      */
     public static void buildROM(Path dirPath, Path romPath) throws IOException {
         // General check of the files
-        if (Files.notExists(dirPath.resolve("data")))
+        if (Files.notExists(dirPath.resolve("root")))
             throw new IOException("data subfolder not found! Please check the given directory!");
         if (Files.notExists(dirPath.resolve("overlay")))
             throw new IOException("overlay subfolder not found! Please check the given directory!");
@@ -257,13 +222,13 @@ public class ROM {
         }
 
         // Recursively load directories and files, getting the root nitro directory
-        NitroDirectory.loadDir(dirPath.resolve("data").toFile(),
+        NitroDirectory.loadDir(dirPath.resolve("root").toFile(),
                 root,
                 0xf000,
                 Objects.requireNonNull(dirPath.resolve("overlay").toFile().listFiles()).length,
                 rom.getPosition()
-                        + FNT.calculateFNTSize(dirPath.resolve("data").toFile())
-                        + FAT.calculateFATSize(dirPath.resolve("data").toFile())
+                        + FNT.calculateFNTSize(dirPath.resolve("root").toFile())
+                        + FAT.calculateFATSize(dirPath.resolve("root").toFile())
                         + overlays.length * 8
                         + 0x840);
 
@@ -283,7 +248,7 @@ public class ROM {
         rom.writeBytes(reader.readAll());
 
         // The actual files
-        NitroDirectory.repackFileTree(rom, dirPath.resolve("data"), root);
+        NitroDirectory.repackFileTree(rom, dirPath.resolve("root"), root);
 
         // Write updated header
         rom.seek(0);

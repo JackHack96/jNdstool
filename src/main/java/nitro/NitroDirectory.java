@@ -23,7 +23,6 @@ import io.BinaryWriter;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -130,49 +129,70 @@ class NitroDirectory implements Comparable<NitroDirectory> {
      * @param currentOffset Current offset from the ROM origin
      */
     public static void loadDir(File currentPath, NitroDirectory parent, int currentDirID, int firstFileID, int currentOffset) {
+        // i need this variables to be shared among ALL recursive calls
         NitroDirectory.currentDirID = currentDirID;
         NitroDirectory.firstFileID = firstFileID;
         NitroDirectory.currentOffset = currentOffset;
+        // now the actual recursive loading process
         loadDir(currentPath, parent);
     }
 
     /**
-     * Recursively create the directory tree of the ROM
+     * Recursively construct the NitroDirectory structure
+     *
+     * @param currentPath The current host file system path
+     * @param parent      The current parent directory
+     */
+    private static void loadDir(File currentPath, NitroDirectory parent) {
+        File[] dirList = currentPath.listFiles(File::isDirectory); // load the current directory list
+        File[] fileList = currentPath.listFiles(File::isFile); // load the current file list
+
+        // it's important to sort the file lists alphabetically
+        if (dirList != null) {
+            Arrays.sort(dirList);
+            for (File dir : dirList) { // for every directory I create the correspondent NitroDirectory
+                currentDirID++;
+                NitroDirectory newDirectory = new NitroDirectory(dir.getName(), currentDirID, parent);
+                parent.directoryList.add(newDirectory);
+                if (Objects.requireNonNull(dir.listFiles()).length > 0)
+                    // here is the recursive call, whenever we encounter a new directory, we will first explore that path, in a depth-first-search fashion
+                    loadDir(dir, newDirectory);
+            }
+        }
+        // remember that this part will be executed for every directory
+        // the first execution will be the first path that will lead to files (like a/0/0/0 for Pokemon HG)
+        if (fileList != null) {
+            Arrays.sort(fileList);
+            for (File file : fileList) { // for every file I create the correspondent NitroFile
+                parent.fileList.add(new NitroFile(file.getName(), firstFileID, currentOffset, (int) file.length(), parent));
+                firstFileID++;
+                currentOffset += (int) file.length();
+            }
+        }
+    }
+
+    /**
+     * Recursively unpack the files of the ROM
      *
      * @param currentDir The path to use for creating the tree
      * @param rootDir    The current root directory
      * @throws IOException If a file is corrupted or something is wrong
      */
-    public static void createDirectoryTree(Path currentDir, NitroDirectory rootDir) throws IOException {
+    public static void unpackFileTree(BinaryReader rom, Path currentDir, NitroDirectory rootDir) throws IOException {
+        // we scan for directories first, thus exploring a path in depth as in DFS algorithm
         for (NitroDirectory d : rootDir.directoryList) {
-            if (Files.notExists(currentDir.resolve(d.getName()))) {
+            if (Files.notExists(currentDir.resolve(d.name)))
                 Files.createDirectory(currentDir.resolve(d.name));
-            }
-            if (d.directoryList.size() > 0)
-                createDirectoryTree(currentDir.resolve(d.name), d);
+            unpackFileTree(rom, currentDir.resolve(d.name), d);
         }
-    }
-
-    /**
-     * Recursively extract the files from the ROM
-     *
-     * @param rom        BinaryReader stream of the .nds ROM
-     * @param currentDir Current path
-     * @param rootDir    The current root directory
-     * @throws IOException If a file is corrupted or something is wrong
-     */
-    public static void createFileTree(BinaryReader rom, Path currentDir, NitroDirectory rootDir) throws IOException {
-        for (NitroDirectory d : rootDir.directoryList) {
-            for (NitroFile f : d.fileList) {
-                if (Files.notExists(currentDir.resolve(d.name).resolve(f.getName()))) {
-                    BinaryWriter tmp = new BinaryWriter(currentDir.resolve(d.name).resolve(f.getName()));
-                    rom.seek(f.getOffset());
-                    tmp.writeBytes(rom.readBuffer(f.getSize()));
-                    tmp.close();
-                }
+        // then whenever we reach the end of a path we unpack the files
+        for (NitroFile f : rootDir.fileList) {
+            if (Files.notExists(currentDir.resolve(f.getName()))) {
+                BinaryWriter tmp = new BinaryWriter(currentDir.resolve(f.getName()));
+                rom.seek(f.getOffset());
+                tmp.writeBytes(rom.readBuffer(f.getSize()));
+                tmp.close();
             }
-            if (d.directoryList.size() > 0)
-                createFileTree(rom, currentDir.resolve(d.name), d);
         }
     }
 
@@ -185,8 +205,10 @@ class NitroDirectory implements Comparable<NitroDirectory> {
      * @throws IOException If a file is corrupted or something is wrong
      */
     public static void repackFileTree(BinaryWriter rom, Path currentDir, NitroDirectory rootDir) throws IOException {
+        // we scan for directories first, thus exploring a path in depth as in DFS algorithm
         for (NitroDirectory d : rootDir.directoryList)
             repackFileTree(rom, currentDir.resolve(d.getName()), d);
+        // then whenever we reach the end of a path we unpack the files
         for (NitroFile f : rootDir.fileList) {
             if (Files.exists(currentDir.resolve(f.getName()))) {
                 BinaryReader tmp = new BinaryReader(currentDir.resolve(f.getName()));
@@ -203,34 +225,4 @@ class NitroDirectory implements Comparable<NitroDirectory> {
     }
 
 
-    /**
-     * Recursively construct the NitroDirectory structure
-     *
-     * @param currentPath The current host file system path
-     * @param parent      The current parent directory
-     */
-    private static void loadDir(File currentPath, NitroDirectory parent) {
-        File[] dirList = currentPath.listFiles(File::isDirectory);
-        File[] fileList = currentPath.listFiles(File::isFile);
-
-        // it's important to sort the file lists alphabetically
-        if (dirList != null) {
-            Arrays.sort(dirList);
-            for (File dir : dirList) {
-                currentDirID++;
-                NitroDirectory newDirectory = new NitroDirectory(dir.getName(), currentDirID, parent);
-                parent.directoryList.add(newDirectory);
-                if (Objects.requireNonNull(dir.listFiles()).length > 0)
-                    loadDir(dir, newDirectory);
-            }
-        }
-        if (fileList != null) {
-            Arrays.sort(fileList);
-            for (File file : fileList) {
-                parent.fileList.add(new NitroFile(file.getName(), firstFileID, currentOffset, (int) file.length(), parent));
-                firstFileID++;
-                currentOffset += (int) file.length();
-            }
-        }
-    }
 }

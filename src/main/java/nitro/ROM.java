@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with jNdstool. If not, see <http://www.gnu.org/licenses/>.
  *
- * Copyright 2016-2017 JackHack96
+ * Copyright 2020 JackHack96
  */
 package nitro;
 
@@ -23,6 +23,7 @@ import io.BinaryWriter;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -66,9 +67,6 @@ public class ROM {
             Files.createDirectory(dirPath.resolve("root"));
         NitroDirectory.unpackFileTree(rom, dirPath.resolve("root"), root);
 
-        // And now we fill everything with files
-        //NitroDirectory.createFileTree(rom, dirPath.resolve("data"), root);
-
         // We also have to extract the header, the ARM binary files and the overlays
         BinaryWriter w; // The writer for the various files
 
@@ -84,7 +82,7 @@ public class ROM {
             }
         }
         int arm7OvSize = (header.getArm7OverlaySize() / 0x20);
-        for (int i = 0; i < header.getArm7OverlaySize() / 0x20; i++) {
+        for (int i = 0; i < arm7OvSize; i++) {
             if (Files.notExists(dirPath.resolve("overlay").resolve(String.format("overlay_%04d.bin", i + arm7OvSize)))) {
                 w = new BinaryWriter(dirPath.resolve("overlay").resolve(String.format("overlay_%04d.bin", i + arm7OvSize)));
                 rom.seek(startOffset.get(i + arm7OvSize));
@@ -97,7 +95,7 @@ public class ROM {
         if (Files.notExists(dirPath.resolve("header.bin"))) {
             rom.seek(0);
             w = new BinaryWriter(dirPath.resolve("header.bin"));
-            w.writeBytes(rom.readBuffer(header.getHeaderSize()));
+            w.writeBytes(rom.readBuffer(0x200));
             w.close();
         }
 
@@ -166,86 +164,116 @@ public class ROM {
             throw new IOException("banner file not found! Please check the given directory!");
 
         BinaryWriter rom = new BinaryWriter(romPath); // The stream for the .nds file
-        BinaryReader reader = new BinaryReader(dirPath.resolve("header.bin")); // The reader for the various files
+        BinaryReader reader; // The stream for reading files
 
-        NitroHeader header = NitroHeader.readHeader(reader);
-        NitroDirectory root = new NitroDirectory("root", 0xf000, null);
-
-        NitroHeader.writeHeader(header, rom); // The header first
-
-        // The ARM9
-        reader = new BinaryReader(dirPath.resolve("arm9.bin"));
-        header.setArm9RomOffset(rom.getPosition());
-        rom.writeBytes(reader.readAll());
-        header.setArm9Size(rom.getPosition() - header.getArm9RomOffset());
-
-        // The ARM9 overlay table
-        reader = new BinaryReader(dirPath.resolve("arm9ovltable.bin"));
-        header.setArm9OverlayOffset(rom.getPosition());
-        rom.writeBytes(reader.readAll());
-        header.setArm9OverlaySize(rom.getPosition() - header.getArm9OverlayOffset());
-
-        // This will be needed for the FAT
-        List<Integer> overlayStartOffsets = new ArrayList<>();
-        List<Integer> overlayEndOffsets = new ArrayList<>();
-
+        // Loading the actual data and the overlay and pre-calculate offsets
         File[] overlays = dirPath.resolve("overlay").toFile().listFiles();
         assert overlays != null;
         Arrays.sort(overlays);
 
-        // The ARM9 overlays
-        for (int i = 0; i < header.getArm9OverlaySize() / 0x20; i++) {
-            reader = new BinaryReader(overlays[i].toPath());
-            overlayStartOffsets.add(rom.getPosition());
-            rom.writeBytes(reader.readAll());
-            overlayEndOffsets.add(rom.getPosition() + reader.getSize());
+        NitroDirectory root = new NitroDirectory("root", 0xf000, null);
+        int fimgOffset = 0;
+        fimgOffset += 0x4000;                                                   // header size
+        fimgOffset += (int) Files.size(dirPath.resolve("arm9.bin"));            // arm9 padded size
+        fimgOffset += addPadding(fimgOffset);
+        fimgOffset += (int) Files.size(dirPath.resolve("arm9ovltable.bin"));    // arm9 overlay table padded size
+        fimgOffset += addPadding(fimgOffset);
+        for (File overlay : overlays) {                                         // arm9 padded overlays
+            fimgOffset += (int) overlay.length();
+            fimgOffset += addPadding(fimgOffset);
         }
-
-        // The ARM7
-        reader = new BinaryReader(dirPath.resolve("arm7.bin"));
-        header.setArm7RomOffset(rom.getPosition());
-        rom.writeBytes(reader.readAll());
-        header.setArm7Size(rom.getPosition() - header.getArm7RomOffset());
-
-        // The ARM7 overlay table
-        reader = new BinaryReader(dirPath.resolve("arm7ovltable.bin"));
-        header.setArm7OverlayOffset(rom.getPosition());
-        rom.writeBytes(reader.readAll());
-        header.setArm7OverlaySize(rom.getPosition() - header.getArm7OverlayOffset());
-
-        // The ARM7 overlays
-        for (int i = header.getArm9OverlaySize() / 0x20; i < header.getArm9OverlaySize() / 0x20 + header.getArm7OverlaySize() / 0x20; i++) {
-            reader = new BinaryReader(overlays[i].toPath());
-            overlayStartOffsets.add(rom.getPosition());
-            rom.writeBytes(reader.readAll());
-            overlayEndOffsets.add(rom.getPosition() + reader.getSize());
-        }
+        fimgOffset += (int) Files.size(dirPath.resolve("arm7.bin"));            // arm7 padded size
+        fimgOffset += addPadding(fimgOffset);
+        fimgOffset += (int) Files.size(dirPath.resolve("arm7ovltable.bin"));    // arm7 overlay table padded size
+        fimgOffset += addPadding(fimgOffset);
+        fimgOffset += FNT.calculateFNTSize(dirPath.resolve("root").toFile());   // File Name Table padded size
+        fimgOffset += addPadding(fimgOffset);
+        fimgOffset += FAT.calculateFATSize(dirPath.resolve("root").toFile());   // File Allocation Table padded size
+        fimgOffset += (overlays.length * 8);
+        fimgOffset += addPadding(fimgOffset);
+        fimgOffset += 0x840;                                                    // banner size
 
         // Recursively load directories and files, getting the root nitro directory
         NitroDirectory.loadDir(dirPath.resolve("root").toFile(),
                 root,
                 0xf000,
                 Objects.requireNonNull(dirPath.resolve("overlay").toFile().listFiles()).length,
-                rom.getPosition()
-                        + FNT.calculateFNTSize(dirPath.resolve("root").toFile())
-                        + FAT.calculateFATSize(dirPath.resolve("root").toFile())
-                        + overlays.length * 8
-                        + 0x840);
+                fimgOffset
+        );
+
+        // Reading the header template, but skipping the section for now as we have to adjust some values
+        reader = new BinaryReader(dirPath.resolve("header.bin"));
+        NitroHeader header = NitroHeader.readHeader(reader);
+        ByteBuffer h = ByteBuffer.allocate(0x4000);
+        rom.writeBytes(h.array());
+
+        // The ARM9
+        reader = new BinaryReader(dirPath.resolve("arm9.bin"));
+        header.setArm9RomOffset(rom.getPosition());
+        header.setArm9Size(reader.getSize());
+        rom.writeBytes(reader.readAll());
+        writePadding(rom);
+
+        // The ARM9 overlay table
+        reader = new BinaryReader(dirPath.resolve("arm9ovltable.bin"));
+        header.setArm9OverlayOffset(rom.getPosition());
+        header.setArm9OverlaySize(reader.getSize());
+        rom.writeBytes(reader.readAll());
+        writePadding(rom);
+
+        // This will be needed for the FAT
+        List<Integer> overlayStartOffsets = new ArrayList<>();
+        List<Integer> overlayEndOffsets = new ArrayList<>();
+
+        // The ARM9 overlays
+        for (int i = 0; i < header.getArm9OverlaySize() / 0x20; i++) {
+            reader = new BinaryReader(overlays[i].toPath());
+            overlayStartOffsets.add(rom.getPosition());
+            overlayEndOffsets.add(rom.getPosition() + reader.getSize());
+            rom.writeBytes(reader.readAll());
+            writePadding(rom);
+        }
+
+        // The ARM7
+        reader = new BinaryReader(dirPath.resolve("arm7.bin"));
+        header.setArm7RomOffset(rom.getPosition());
+        header.setArm7Size(reader.getSize());
+        rom.writeBytes(reader.readAll());
+        writePadding(rom);
+
+        // The ARM7 overlay table
+        reader = new BinaryReader(dirPath.resolve("arm7ovltable.bin"));
+        header.setArm7OverlayOffset(rom.getPosition());
+        header.setArm7OverlaySize(reader.getSize());
+        rom.writeBytes(reader.readAll());
+        writePadding(rom);
+
+        // The ARM7 overlays
+        for (int i = header.getArm9OverlaySize() / 0x20; i < header.getArm9OverlaySize() / 0x20 + header.getArm7OverlaySize() / 0x20; i++) {
+            reader = new BinaryReader(overlays[i].toPath());
+            overlayStartOffsets.add(rom.getPosition());
+            overlayEndOffsets.add(rom.getPosition() + reader.getSize());
+            rom.writeBytes(reader.readAll());
+            writePadding(rom);
+        }
 
         // The File Name Table
         header.setFntOffset(rom.getPosition());
         FNT.writeFNT(rom, root);
         header.setFntSize(rom.getPosition() - header.getFntOffset());
+        writePadding(rom);
 
         // The File Allocation Table
         header.setFatOffset(rom.getPosition());
         FAT.writeFAT(rom, root, overlayStartOffsets, overlayEndOffsets);
         header.setFatSize(rom.getPosition() - header.getFatOffset());
+        writePadding(rom);
 
         // The banner
         header.setIconOffset(rom.getPosition());
         reader = new BinaryReader(dirPath.resolve("banner.bin"));
         rom.writeBytes(reader.readAll());
+        writePadding(rom);
 
         // The actual files
         NitroDirectory.repackFileTree(rom, dirPath.resolve("root"), root);
@@ -256,5 +284,31 @@ public class ROM {
 
         rom.close();
         reader.close();
+    }
+
+    /**
+     * Just add padding for 4-byte offset alignment
+     *
+     * @param rom The BinaryWriter ROM stream
+     * @throws IOException
+     */
+    static void writePadding(BinaryWriter rom) throws IOException {
+        int p = rom.getPosition();
+        if (p % 4 != 0)
+            for (int i = 0; i < 4 - (p % 4); i++)
+                rom.writeByte(0xff);
+    }
+
+    /**
+     * Calculate the nearest 4-byte aligned offset
+     *
+     * @param offset Current offset
+     * @return 4-byte aligned offset
+     */
+    private static int addPadding(int offset) {
+        int diff = offset;
+        if (diff % 4 != 0)
+            diff += 4 - (diff % 4);
+        return diff - offset;
     }
 }

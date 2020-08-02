@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with jNdstool. If not, see <http://www.gnu.org/licenses/>.
  *
- * Copyright 2017 JackHack96
+ * Copyright 2020 JackHack96
  */
 package nitro;
 

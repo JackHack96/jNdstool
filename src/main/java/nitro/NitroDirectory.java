@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with jNdstool. If not, see <http://www.gnu.org/licenses/>.
  *
- * Copyright 2016 JackHack96
+ * Copyright 2020 JackHack96
  */
 package nitro;
 
@@ -40,7 +40,7 @@ class NitroDirectory implements Comparable<NitroDirectory> {
 
     //The following variables are used internally by loadDir method
     private static int currentDirID;
-    private static int firstFileID;
+    private static int fileID;
     private static int currentOffset;
 
     public NitroDirectory(String name, int id, NitroDirectory parent) {
@@ -131,8 +131,12 @@ class NitroDirectory implements Comparable<NitroDirectory> {
     public static void loadDir(File currentPath, NitroDirectory parent, int currentDirID, int firstFileID, int currentOffset) {
         // i need this variables to be shared among ALL recursive calls
         NitroDirectory.currentDirID = currentDirID;
-        NitroDirectory.firstFileID = firstFileID;
+        NitroDirectory.fileID = firstFileID;
+        // it's better to get 4-byte alignment of the offsets
+        if (currentOffset % 4 != 0)
+            currentOffset += 4 - (currentOffset % 4);
         NitroDirectory.currentOffset = currentOffset;
+
         // now the actual recursive loading process
         loadDir(currentPath, parent);
     }
@@ -164,9 +168,12 @@ class NitroDirectory implements Comparable<NitroDirectory> {
         if (fileList != null) {
             Arrays.sort(fileList);
             for (File file : fileList) { // for every file I create the correspondent NitroFile
-                parent.fileList.add(new NitroFile(file.getName(), firstFileID, currentOffset, (int) file.length(), parent));
-                firstFileID++;
+                parent.fileList.add(new NitroFile(file.getName(), fileID, currentOffset, (int) file.length(), parent));
+                fileID++;
                 currentOffset += (int) file.length();
+                // it's better to get 4-byte alignment of the offsets
+                if (currentOffset % 4 != 0)
+                    currentOffset += (4 - (currentOffset % 4));
             }
         }
     }
@@ -218,11 +225,11 @@ class NitroDirectory implements Comparable<NitroDirectory> {
                     f.setOffset(rom.getPosition());
                 }
                 rom.writeBytes(tmp.readAll());
+                // padding with 0xff for 4-byte alignment
+                ROM.writePadding(rom);
                 tmp.close();
             } else
                 throw new IOException(f.getName() + " file does not exist");
         }
     }
-
-
 }

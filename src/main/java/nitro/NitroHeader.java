@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with jNdstool. If not, see <http://www.gnu.org/licenses/>.
  *
- * Copyright 2016 JackHack96
+ * Copyright 2020 JackHack96
  */
 package nitro;
 
@@ -215,8 +215,10 @@ public class NitroHeader {
         rom.writeInt(header.debugSize);
         rom.writeInt(header.debugRamAddress);
         rom.writeInt(0);
-        // for now, we ignore the secure area
-        for (int i = 0; i < 0x7D2; i++)
+        for(int i = 0;i<0x12;i++)
+            rom.writeLong(0x0);
+        // we ignore the secure area
+        for (int i = 0; i < 0x7c0; i++)
             rom.writeLong(0x0);
     }
 

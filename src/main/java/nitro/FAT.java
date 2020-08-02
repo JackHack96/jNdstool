@@ -30,20 +30,6 @@ public class FAT {
     }
 
     /**
-     * Pre-calculate the size of the FAT section starting from a path (overlays are excluded from calculation)
-     *
-     * @param path Path of the folder to calculate the FAT
-     * @return Size in bytes of the FAT section
-     * @implNote The overlays are not counted
-     */
-    public static int calculateFATSize(File path) {
-        int n = Objects.requireNonNull(path.listFiles(File::isFile)).length * 8;
-        for (File t : Objects.requireNonNull(path.listFiles(File::isDirectory)))
-            n += calculateFATSize(t);
-        return n;
-    }
-
-    /**
      * Recursively write the FAT section of the ROM
      *
      * @param rom  ROM binary stream
@@ -57,5 +43,19 @@ public class FAT {
             rom.writeInt(f.getOffset());
             rom.writeInt(f.getOffset() + f.getSize());
         }
+    }
+
+    /**
+     * Pre-calculate the size of the FAT section starting from a path (overlays are excluded from calculation)
+     *
+     * @param path Path of the folder to calculate the FAT
+     * @return Size in bytes of the FAT section
+     * @implNote The overlays are not counted
+     */
+    public static int calculateFATSize(File path) {
+        int n = Objects.requireNonNull(path.listFiles(File::isFile)).length * 8;
+        for (File t : Objects.requireNonNull(path.listFiles(File::isDirectory)))
+            n += calculateFATSize(t);
+        return n;
     }
 }

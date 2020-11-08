@@ -24,7 +24,9 @@ import io.BinaryWriter;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 /**
  * This class handles the cartdridge header.
@@ -37,6 +39,8 @@ public class NitroHeader {
     private int unitCode;
     private int encryptionSeedSelect;
     private int deviceCapacity;
+    private byte[] reserved1;
+    private int dsiFlags;
     private int ndsRegion;
     private int romVersion;
     private int autoStart;
@@ -80,6 +84,9 @@ public class NitroHeader {
     private int usedRomSize;
     private int headerSize;
 
+    private byte[] reserved2;
+    private byte[] reserved3;
+
     private byte[] logo;
     private int logoChecksum;
     private int headerChecksum;
@@ -88,6 +95,8 @@ public class NitroHeader {
     private int debugSize;
     private int debugRamAddress;
 
+    private int reserved4;
+    private byte[] reserved5;
 
     /**
      * Read the header
@@ -100,12 +109,12 @@ public class NitroHeader {
         NitroHeader header = new NitroHeader();
         header.gameTitle = rom.readString(12, StandardCharsets.US_ASCII).trim();
         header.gameCode = rom.readString(4, StandardCharsets.US_ASCII);
-        // TODO Properly implement maker code handling
         header.makerCode = rom.readString(2, StandardCharsets.US_ASCII);
         header.unitCode = rom.readByte();
         header.encryptionSeedSelect = rom.readByte();
         header.deviceCapacity = rom.readByte();
-        rom.skip(8);
+        header.reserved1 = rom.readBuffer(7);
+        header.dsiFlags = rom.readByte();
         header.ndsRegion = rom.readByte();
         header.romVersion = rom.readByte();
         header.autoStart = rom.readByte();
@@ -142,7 +151,8 @@ public class NitroHeader {
         header.secureAreaDisable = rom.readLong();
         header.usedRomSize = rom.readInt();
         header.headerSize = rom.readInt();
-        rom.skip(0x38);
+        header.reserved2 = rom.readBuffer(0x28);
+        header.reserved3 = rom.readBuffer(0x10);
 
         header.logo = rom.readBuffer(0x9c);
         header.logoChecksum = rom.readShort();
@@ -150,6 +160,8 @@ public class NitroHeader {
         header.debugRomOffset = rom.readInt();
         header.debugSize = rom.readInt();
         header.debugRamAddress = rom.readInt();
+        header.reserved4 = rom.readInt();
+        header.reserved5 = rom.readBuffer(0x90);
         return header;
     }
 
@@ -166,7 +178,8 @@ public class NitroHeader {
         rom.writeByte(header.unitCode);
         rom.writeByte(header.encryptionSeedSelect);
         rom.writeByte(header.deviceCapacity);
-        rom.writeLong(0x0);
+        rom.writeBytes(header.reserved1);
+        rom.writeByte(header.dsiFlags);
         rom.writeByte(header.ndsRegion);
         rom.writeByte(header.romVersion);
         rom.writeByte(header.autoStart);
@@ -203,34 +216,29 @@ public class NitroHeader {
         rom.writeLong(header.secureAreaDisable);
         rom.writeInt(header.usedRomSize);
         rom.writeInt(header.headerSize);
-        for (int i = 0; i < 7; i++)
-            rom.writeLong(0x0);
+        rom.writeBytes(header.reserved2);
+        rom.writeBytes(header.reserved3);
 
         rom.writeBytes(header.logo, 0x9c);
         rom.writeShort(header.logoChecksum);
-        // the checksum must be calculated now
-        updateHeaderChecksum(header);
         rom.writeShort(header.headerChecksum);
         rom.writeInt(header.debugRomOffset);
         rom.writeInt(header.debugSize);
         rom.writeInt(header.debugRamAddress);
-        rom.writeInt(0);
-        for(int i = 0;i<0x12;i++)
-            rom.writeLong(0x0);
-        // we ignore the secure area
-        for (int i = 0; i < 0x7c0; i++)
-            rom.writeLong(0x0);
+        rom.writeInt(header.reserved4);
+        rom.writeBytes(header.reserved5);
     }
 
-    private static void updateHeaderChecksum(NitroHeader header) {
-        ByteBuffer tmpHeader = ByteBuffer.allocate(0x15e);
+    public static void updateHeaderChecksum(NitroHeader header) {
+        ByteBuffer tmpHeader = ByteBuffer.allocate(0x8000).order(ByteOrder.LITTLE_ENDIAN);
         tmpHeader.put(header.gameCode.getBytes());
         tmpHeader.put(header.gameTitle.getBytes());
         tmpHeader.put(header.makerCode.getBytes());
         tmpHeader.put((byte) header.unitCode);
         tmpHeader.put((byte) header.encryptionSeedSelect);
         tmpHeader.put((byte) header.deviceCapacity);
-        tmpHeader.putLong(0x0);
+        tmpHeader.put(header.reserved1);
+        tmpHeader.put((byte) header.dsiFlags);
         tmpHeader.put((byte) header.ndsRegion);
         tmpHeader.put((byte) header.romVersion);
         tmpHeader.put((byte) header.autoStart);
@@ -260,13 +268,23 @@ public class NitroHeader {
         tmpHeader.putLong(header.secureAreaDisable);
         tmpHeader.putInt(header.usedRomSize);
         tmpHeader.putInt(header.headerSize);
-        for (int i = 0; i < 7; i++)
-            tmpHeader.putLong(0x0);
+        tmpHeader.put(header.reserved2);
+        tmpHeader.put(header.reserved3);
         tmpHeader.put(header.logo);
         tmpHeader.putShort((short) header.logoChecksum);
+        tmpHeader.putShort((short) header.headerChecksum);
+        tmpHeader.putInt(header.debugRomOffset);
+        tmpHeader.putInt(header.debugSize);
+        tmpHeader.putInt(header.debugRamAddress);
+        tmpHeader.putInt(header.reserved4);
+        tmpHeader.put(header.reserved5);
 
         tmpHeader.flip();
-        header.headerChecksum = (int) CRC.calculateCRC(CRC.Parameters.CRC16, tmpHeader.array());
+        byte[] headerBytes = tmpHeader.array();
+        header.headerChecksum = (int) CRC.calculateCRC(CRC.Parameters.CRC16, Arrays.copyOfRange(headerBytes, 0, 0x15e));
+        header.logoChecksum = (int) CRC.calculateCRC(CRC.Parameters.CRC16, Arrays.copyOfRange(headerBytes, 0xc0, 0x15c));
+        header.secureAreaChecksum = (int) CRC.calculateCRC(CRC.Parameters.CRC16, Arrays.copyOfRange(headerBytes, header.getArm9RomOffset(), 0x8000 - header.getArm9RomOffset()));
+
         tmpHeader.clear();
     }
 

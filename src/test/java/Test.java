@@ -22,8 +22,6 @@ public class Test {
             finish = Instant.now();
             timeDifference = Duration.between(start, finish).toMillis();
             System.out.println("Repacking took " + timeDifference + "ms");
-
-            ROM.extractROM(Paths.get("/home/matteo/lol.nds"),Paths.get("/home/matteo/lol_ext"));
         } catch (Exception e) {
             e.printStackTrace();
         }

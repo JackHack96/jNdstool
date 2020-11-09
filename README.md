@@ -1,4 +1,4 @@
-#jNdstool
+# jNdstool
 This tool is the Java version of the popular `ndstool` by Rafael Vuijk, Dave Murphy and Alexei Karpenko
 of the devkitPro team (https://github.com/devkitPro/ndstool).
 It is based upon Martin Korth's DS specifications, which you can find in the original HTML version at 

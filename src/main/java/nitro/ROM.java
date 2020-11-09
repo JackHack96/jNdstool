@@ -46,7 +46,7 @@ public class ROM {
             throw new IOException("Can't write in the directory! Check permissions!");
 
         BinaryReader rom = new BinaryReader(romPath);
-        NitroDirectory root = new NitroDirectory("root", 0xf000, null);
+        NitroDirectory root = new NitroDirectory("data", 0xf000, null);
         NitroHeader header = NitroHeader.readHeader(rom);
         Map<Integer, Integer> startOffset = new HashMap<>(); // The ROM's files start offset
         Map<Integer, Integer> endOffset = new HashMap<>(); // The ROM's files end offsets
@@ -63,9 +63,9 @@ public class ROM {
         NitroDirectory.loadDir(root, rom, rom.getPosition(), startOffset, endOffset);
 
         // Let's create the directory tree
-        if (Files.notExists(dirPath.resolve("root")))
-            Files.createDirectory(dirPath.resolve("root"));
-        NitroDirectory.unpackFileTree(rom, dirPath.resolve("root"), root);
+        if (Files.notExists(dirPath.resolve("data")))
+            Files.createDirectory(dirPath.resolve("data"));
+        NitroDirectory.unpackFileTree(rom, dirPath.resolve("data"), root);
 
         // We also have to extract the header, the ARM binary files and the overlays
         BinaryWriter w; // The writer for the various files
@@ -146,7 +146,7 @@ public class ROM {
      */
     public static void buildROM(Path dirPath, Path romPath) throws IOException {
         // General check of the files
-        if (Files.notExists(dirPath.resolve("root")))
+        if (Files.notExists(dirPath.resolve("data")))
             throw new IOException("root subfolder not found! Please check the given directory!");
         if (Files.notExists(dirPath.resolve("overlay")))
             throw new IOException("overlay subfolder not found! Please check the given directory!");
@@ -171,7 +171,7 @@ public class ROM {
         assert overlays != null;
         Arrays.sort(overlays);
 
-        NitroDirectory root = new NitroDirectory("root", 0xf000, null);
+        NitroDirectory root = new NitroDirectory("data", 0xf000, null);
         int fimgOffset = 0;
         fimgOffset += 0x4000;                                                   // header size
         fimgOffset += (int) Files.size(dirPath.resolve("arm9.bin"));            // arm9 padded size
@@ -186,15 +186,15 @@ public class ROM {
         fimgOffset += addPadding(fimgOffset);
         fimgOffset += (int) Files.size(dirPath.resolve("arm7ovltable.bin"));    // arm7 overlay table padded size
         fimgOffset += addPadding(fimgOffset);
-        fimgOffset += FNT.calculateFNTSize(dirPath.resolve("root").toFile());   // File Name Table padded size
+        fimgOffset += FNT.calculateFNTSize(dirPath.resolve("data").toFile());   // File Name Table padded size
         fimgOffset += addPadding(fimgOffset);
-        fimgOffset += FAT.calculateFATSize(dirPath.resolve("root").toFile());   // File Allocation Table padded size
+        fimgOffset += FAT.calculateFATSize(dirPath.resolve("data").toFile());   // File Allocation Table padded size
         fimgOffset += (overlays.length * 8);
         fimgOffset += addPadding(fimgOffset);
         fimgOffset += 0x840;                                                    // banner size
 
         // Recursively load directories and files, getting the root nitro directory
-        NitroDirectory.loadDir(dirPath.resolve("root").toFile(),
+        NitroDirectory.loadDir(dirPath.resolve("data").toFile(),
                 root,
                 0xf000,
                 Objects.requireNonNull(dirPath.resolve("overlay").toFile().listFiles()).length,
@@ -276,7 +276,7 @@ public class ROM {
         writePadding(rom);
 
         // The actual files
-        NitroDirectory.repackFileTree(rom, dirPath.resolve("root"), root);
+        NitroDirectory.repackFileTree(rom, dirPath.resolve("data"), root);
 
         // Write updated header
         rom.seek(0);

@@ -147,7 +147,7 @@ public class ROM {
     public static void buildROM(Path dirPath, Path romPath) throws IOException {
         // General check of the files
         if (Files.notExists(dirPath.resolve("data")))
-            throw new IOException("root subfolder not found! Please check the given directory!");
+            throw new IOException("data subfolder not found! Please check the given directory!");
         if (Files.notExists(dirPath.resolve("overlay")))
             throw new IOException("overlay subfolder not found! Please check the given directory!");
         if (Files.notExists(dirPath.resolve("arm9.bin")))

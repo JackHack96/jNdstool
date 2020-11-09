@@ -45,7 +45,7 @@ public class JNdstool {
             if (res.get("extract") != null) {
                 ROM.extractROM(Paths.get(res.getString("extract")), Paths.get(res.getString("directory")));
             } else {
-                ROM.buildROM(Paths.get(res.getString("create")), Paths.get(res.getString("directory")));
+                ROM.buildROM(Paths.get(res.getString("directory")), Paths.get(res.getString("create")));
             }
         } catch (ArgumentParserException e) {
             parser.handleError(e);

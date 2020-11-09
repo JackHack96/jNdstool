@@ -4,7 +4,7 @@ plugins {
     id 'application'
 }
 
-group 'com.github'
+group 'com.github.jackhack96'
 version '1.0'
 mainClassName = "main.JNdstool"
 

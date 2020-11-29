@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Consumer;
 
 /**
  * This class represents a folder of a Nitro file system
@@ -83,7 +84,7 @@ class NitroDirectory implements Comparable<NitroDirectory> {
 
     @Override
     public int compareTo(NitroDirectory nitroDirectory) {
-        return (name.compareTo(nitroDirectory.name));
+        return (name.compareToIgnoreCase(nitroDirectory.name));
     }
 
     /**
@@ -153,7 +154,7 @@ class NitroDirectory implements Comparable<NitroDirectory> {
 
         // it's important to sort the file lists alphabetically
         if (dirList != null) {
-            Arrays.sort(dirList);
+            Arrays.sort(dirList, Comparator.comparing(a -> a.getName().toLowerCase()));
             for (File dir : dirList) { // for every directory I create the correspondent NitroDirectory
                 currentDirID++;
                 NitroDirectory newDirectory = new NitroDirectory(dir.getName(), currentDirID, parent);
@@ -166,7 +167,7 @@ class NitroDirectory implements Comparable<NitroDirectory> {
         // remember that this part will be executed for every directory
         // the first execution will be the first path that will lead to files (like a/0/0/0 for Pokemon HG)
         if (fileList != null) {
-            Arrays.sort(fileList);
+            Arrays.sort(fileList, Comparator.comparing(a -> a.getName().toLowerCase()));
             for (File file : fileList) { // for every file I create the correspondent NitroFile
                 parent.fileList.add(new NitroFile(file.getName(), fileID, currentOffset, (int) file.length(), parent));
                 fileID++;

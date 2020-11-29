@@ -78,7 +78,7 @@ class NitroFile implements Comparable<NitroFile> {
 
     @Override
     public int compareTo(NitroFile nitroFile) {
-        return name.compareTo(nitroFile.name);
+        return name.compareToIgnoreCase(nitroFile.name);
     }
 
     @Override
